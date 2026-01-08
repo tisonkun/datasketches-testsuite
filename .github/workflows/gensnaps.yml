@@ -1,0 +1,68 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Generate Snapshots
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+# Concurrency strategy:
+#   github.workflow: distinguish this workflow from others
+#   github.event_name: distinguish `push` event from `pull_request` event
+#   github.event.number: set to the number of the pull request if `pull_request` event
+#   github.run_id: otherwise, it's a `push` event, only cancel if we rerun the workflow
+#
+# Reference:
+#   https://docs.github.com/en/actions/using-jobs/using-concurrency
+#   https://docs.github.com/en/actions/learn-github-actions/contexts#github-context
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Ensure Snapshots Up-to-Date
+    strategy:
+      matrix:
+        os: [ ubuntu-24.04, macos-14, windows-2022 ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+      - name: Generate Snapshots
+        shell: bash
+        run: ./gensnaps.py
+      - name: Check for Changes
+        shell: bash
+        run: |
+          if [[ `git status --porcelain` ]]; then
+            echo "There are changes in the following files:"
+            git status --porcelain
+            echo "Please run './gensnaps.py --all' locally and commit the changes."
+            exit 1
+          else
+            echo "No changes detected."
+          fi
